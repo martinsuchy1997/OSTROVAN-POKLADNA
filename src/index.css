@@ -1,0 +1,43 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    color: #0f172a;
+    background-color: #f8fafc;
+  }
+}
+
+@media print {
+  @page {
+    margin: 8mm;
+    size: portrait;
+  }
+  body {
+    background: white !important;
+    color: #0f172a !important;
+  }
+  /* Hide the rest of the application when printing */
+  body * {
+    visibility: hidden;
+  }
+  /* Make the printable report and its contents visible */
+  #printable-report,
+  #printable-report * {
+    visibility: visible;
+  }
+  #printable-report {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 10px 15px !important;
+    background: white !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+}
