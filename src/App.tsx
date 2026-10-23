@@ -26,7 +26,7 @@ export default function App() {
   // Transactions persistence
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
     const saved = localStorage.getItem('team_treasury_transactions');
-    if (saved) {
+    if (saved !== null) {
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
@@ -44,7 +44,7 @@ export default function App() {
   // Settings persistence
   const [settings, setSettings] = useState<TreasurySettings>(() => {
     const saved = localStorage.getItem('team_treasury_settings');
-    if (saved) {
+    if (saved !== null) {
       try {
         const parsed = JSON.parse(saved);
         if (parsed.teamName === 'FK Sokol - Týmová pokladna' || !parsed.teamName) {
@@ -61,7 +61,7 @@ export default function App() {
   // Categories persistence
   const [categories, setCategories] = useState<string[]>(() => {
     const saved = localStorage.getItem('team_treasury_categories');
-    if (saved) {
+    if (saved !== null) {
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.some((c: string) => c.includes('ZÁPISNÉ'))) {
@@ -77,10 +77,10 @@ export default function App() {
   // Players Roster persistence
   const [players, setPlayers] = useState<Player[]>(() => {
     const saved = localStorage.getItem('team_treasury_players');
-    if (saved) {
+    if (saved !== null) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
+        if (Array.isArray(parsed)) {
           return parsed;
         }
       } catch (e) {
@@ -167,7 +167,7 @@ export default function App() {
     [transactions]
   );
 
-  // Handlers
+  // Handlers with instant localStorage persistence
   const handleAddTransaction = (txData: Omit<Transaction, 'id' | 'createdAt'>) => {
     const newTx: Transaction = {
       ...txData,
@@ -176,15 +176,66 @@ export default function App() {
       createdAt: Date.now(),
     };
 
-    setTransactions((prev) => [newTx, ...prev]);
+    setTransactions((prev) => {
+      const next = [newTx, ...prev];
+      try {
+        localStorage.setItem('team_treasury_transactions', JSON.stringify(next));
+      } catch (e) {
+        console.error('LocalStorage error', e);
+      }
+      return next;
+    });
 
     if (newTx.category && !categories.includes(newTx.category)) {
-      setCategories((prev) => [...prev, newTx.category]);
+      setCategories((prev) => {
+        const next = [...prev, newTx.category];
+        try {
+          localStorage.setItem('team_treasury_categories', JSON.stringify(next));
+        } catch (e) {
+          console.error('LocalStorage error', e);
+        }
+        return next;
+      });
     }
   };
 
   const handleDeleteTransaction = (id: string) => {
-    setTransactions((prev) => prev.filter((t) => t.id !== id));
+    setTransactions((prev) => {
+      const next = prev.filter((t) => t.id !== id);
+      try {
+        localStorage.setItem('team_treasury_transactions', JSON.stringify(next));
+      } catch (e) {
+        console.error('LocalStorage error', e);
+      }
+      return next;
+    });
+  };
+
+  // Update an existing fine amount or category
+  const handleUpdateTransaction = (id: string, updated: Partial<Transaction>) => {
+    setTransactions((prev) => {
+      const next = prev.map((t) => (t.id === id ? { ...t, ...updated } : t));
+      try {
+        localStorage.setItem('team_treasury_transactions', JSON.stringify(next));
+      } catch (e) {
+        console.error('LocalStorage error', e);
+      }
+      return next;
+    });
+  };
+
+  // Clear / zero out all debt for a specific player (when player paid)
+  const handleClearPlayerDebt = (playerName: string) => {
+    const target = playerName.trim().toLowerCase();
+    setTransactions((prev) => {
+      const next = prev.filter((t) => t.name.trim().toLowerCase() !== target);
+      try {
+        localStorage.setItem('team_treasury_transactions', JSON.stringify(next));
+      } catch (e) {
+        console.error('LocalStorage error', e);
+      }
+      return next;
+    });
   };
 
   const handleOpenAddFine = (name?: string) => {
@@ -211,7 +262,15 @@ export default function App() {
       id: 'player-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
       createdAt: Date.now(),
     };
-    setPlayers((prev) => [...prev, newPlayer]);
+    setPlayers((prev) => {
+      const next = [...prev, newPlayer];
+      try {
+        localStorage.setItem('team_treasury_players', JSON.stringify(next));
+      } catch (e) {
+        console.error('LocalStorage error', e);
+      }
+      return next;
+    });
   };
 
   const handleAddMultiplePlayers = (names: string[]) => {
@@ -220,15 +279,39 @@ export default function App() {
       name,
       createdAt: Date.now() + idx,
     }));
-    setPlayers((prev) => [...prev, ...newPlayers]);
+    setPlayers((prev) => {
+      const next = [...prev, ...newPlayers];
+      try {
+        localStorage.setItem('team_treasury_players', JSON.stringify(next));
+      } catch (e) {
+        console.error('LocalStorage error', e);
+      }
+      return next;
+    });
   };
 
   const handleDeletePlayer = (name: string) => {
     const targetName = name.trim().toLowerCase();
     // 1. Remove player from roster
-    setPlayers((prev) => prev.filter((p) => p.name.trim().toLowerCase() !== targetName));
+    setPlayers((prev) => {
+      const next = prev.filter((p) => p.name.trim().toLowerCase() !== targetName);
+      try {
+        localStorage.setItem('team_treasury_players', JSON.stringify(next));
+      } catch (e) {
+        console.error('LocalStorage error', e);
+      }
+      return next;
+    });
     // 2. Remove all transactions of this player so they are not recreated in membersSummary
-    setTransactions((prev) => prev.filter((t) => t.name.trim().toLowerCase() !== targetName));
+    setTransactions((prev) => {
+      const next = prev.filter((t) => t.name.trim().toLowerCase() !== targetName);
+      try {
+        localStorage.setItem('team_treasury_transactions', JSON.stringify(next));
+      } catch (e) {
+        console.error('LocalStorage error', e);
+      }
+      return next;
+    });
   };
 
   const handleResetToSampleData = () => {
@@ -236,11 +319,34 @@ export default function App() {
     setSettings(DEFAULT_SETTINGS);
     setCategories(INITIAL_CATEGORIES);
     setPlayers(INITIAL_PLAYERS);
+    try {
+      localStorage.setItem('team_treasury_transactions', JSON.stringify(INITIAL_TRANSACTIONS));
+      localStorage.setItem('team_treasury_settings', JSON.stringify(DEFAULT_SETTINGS));
+      localStorage.setItem('team_treasury_categories', JSON.stringify(INITIAL_CATEGORIES));
+      localStorage.setItem('team_treasury_players', JSON.stringify(INITIAL_PLAYERS));
+    } catch (e) {
+      console.error('LocalStorage error', e);
+    }
   };
 
   const handleClearAllData = () => {
     setTransactions([]);
     setPlayers([]);
+    try {
+      localStorage.setItem('team_treasury_transactions', JSON.stringify([]));
+      localStorage.setItem('team_treasury_players', JSON.stringify([]));
+    } catch (e) {
+      console.error('LocalStorage error', e);
+    }
+  };
+
+  const handleSaveSettings = (newSettings: TreasurySettings) => {
+    setSettings(newSettings);
+    try {
+      localStorage.setItem('team_treasury_settings', JSON.stringify(newSettings));
+    } catch (e) {
+      console.error('LocalStorage error', e);
+    }
   };
 
   const handleImportData = (data: {
@@ -248,16 +354,26 @@ export default function App() {
     transactions: Transaction[];
     players?: Player[];
   }) => {
-    if (data.settings) setSettings(data.settings);
+    if (data.settings) {
+      setSettings(data.settings);
+      try {
+        localStorage.setItem('team_treasury_settings', JSON.stringify(data.settings));
+      } catch (e) {}
+    }
     if (data.transactions) {
-      setTransactions(
-        data.transactions
-          .filter((t: any) => t.type !== 'expense')
-          .map((t: any) => ({ ...t, type: 'income' as const }))
-      );
+      const sanitized = data.transactions
+        .filter((t: any) => t.type !== 'expense')
+        .map((t: any) => ({ ...t, type: 'income' as const }));
+      setTransactions(sanitized);
+      try {
+        localStorage.setItem('team_treasury_transactions', JSON.stringify(sanitized));
+      } catch (e) {}
     }
     if (data.players && Array.isArray(data.players)) {
       setPlayers(data.players);
+      try {
+        localStorage.setItem('team_treasury_players', JSON.stringify(data.players));
+      } catch (e) {}
     }
   };
 
@@ -380,6 +496,8 @@ export default function App() {
         playerFines={transactions}
         onDeleteFine={handleDeleteTransaction}
         onDeletePlayer={handleDeletePlayer}
+        onClearPlayerDebt={handleClearPlayerDebt}
+        onUpdateFine={handleUpdateTransaction}
       />
 
       {/* Add Player Modal */}
@@ -405,7 +523,7 @@ export default function App() {
         isOpen={isSettingsModalOpen}
         onClose={() => setIsSettingsModalOpen(false)}
         settings={settings}
-        onSaveSettings={setSettings}
+        onSaveSettings={handleSaveSettings}
         onResetToSampleData={handleResetToSampleData}
         onClearAllData={handleClearAllData}
         transactions={transactions}

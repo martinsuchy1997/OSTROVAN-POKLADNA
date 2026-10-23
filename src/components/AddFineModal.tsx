@@ -10,6 +10,7 @@ import {
   ShieldAlert,
   Trash2,
   Receipt,
+  Pencil,
 } from 'lucide-react';
 import { Transaction } from '../types';
 import { formatCurrency } from '../utils/exportUtils';
@@ -31,6 +32,8 @@ interface AddFineModalProps {
   playerFines?: Transaction[];
   onDeleteFine?: (id: string) => void;
   onDeletePlayer?: (name: string) => void;
+  onClearPlayerDebt?: (name: string) => void;
+  onUpdateFine?: (id: string, updated: Partial<Transaction>) => void;
 }
 
 export const AddFineModal: React.FC<AddFineModalProps> = ({
@@ -44,6 +47,8 @@ export const AddFineModal: React.FC<AddFineModalProps> = ({
   playerFines = [],
   onDeleteFine,
   onDeletePlayer,
+  onClearPlayerDebt,
+  onUpdateFine,
 }) => {
   const [selectedPlayer, setSelectedPlayer] = useState(initialPlayerName);
   const [customPlayerName, setCustomPlayerName] = useState('');
@@ -53,6 +58,9 @@ export const AddFineModal: React.FC<AddFineModalProps> = ({
   const [isSuccess, setIsSuccess] = useState(false);
   const [activeSubTab, setActiveSubTab] = useState<'add' | 'history'>('add');
   const [confirmDeletePlayer, setConfirmDeletePlayer] = useState(false);
+  const [confirmClearDebt, setConfirmClearDebt] = useState(false);
+  const [editingFineId, setEditingFineId] = useState<string | null>(null);
+  const [editingFineAmount, setEditingFineAmount] = useState<string>('');
 
   const amountInputRef = useRef<HTMLInputElement>(null);
 
@@ -410,32 +418,128 @@ export const AddFineModal: React.FC<AddFineModalProps> = ({
                 </span>
               </div>
 
-              <div className="space-y-1.5 max-h-64 overflow-y-auto">
-                {currentPlayerFines.map((fine) => (
-                  <div
-                    key={fine.id}
-                    className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs"
-                  >
-                    <span className="font-semibold text-slate-900 truncate pr-2">
-                      {fine.category}
-                    </span>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="font-black text-red-600">
-                        +{formatCurrency(fine.amount, currency)}
-                      </span>
-                      {onDeleteFine && (
-                        <button
-                          type="button"
-                          onClick={() => onDeleteFine(fine.id)}
-                          className="p-1 text-slate-300 hover:text-red-600 transition-colors"
-                          title="Smazat tuto pokutu"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
+              {/* Clear player debt button */}
+              {onClearPlayerDebt && (currentPlayerInfo?.totalIncome || 0) > 0 && (
+                confirmClearDebt ? (
+                  <div className="p-2.5 bg-emerald-50 border border-emerald-300 rounded-xl flex items-center justify-between gap-2 text-xs">
+                    <span className="font-bold text-emerald-900">Vynulovat dluh (zaplaceno)?</span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onClearPlayerDebt(selectedPlayer);
+                          setConfirmClearDebt(false);
+                          setIsSuccess(true);
+                          setTimeout(() => {
+                            setIsSuccess(false);
+                            onClose();
+                          }, 500);
+                        }}
+                        className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-lg cursor-pointer"
+                      >
+                        Ano, smazat dluh
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmClearDebt(false)}
+                        className="px-2 py-1 bg-white text-slate-700 font-bold text-xs rounded-lg border border-slate-300 cursor-pointer"
+                      >
+                        Zpět
+                      </button>
                     </div>
                   </div>
-                ))}
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmClearDebt(true)}
+                    className="w-full py-2 px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 font-extrabold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Vynulovat dluh (Hráč vše zaplatil)</span>
+                  </button>
+                )
+              )}
+
+              <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                {currentPlayerFines.map((fine) => {
+                  const isEditing = editingFineId === fine.id;
+
+                  return (
+                    <div
+                      key={fine.id}
+                      className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs gap-2"
+                    >
+                      <span className="font-semibold text-slate-900 truncate pr-1">
+                        {fine.category}
+                      </span>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        {isEditing ? (
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="number"
+                              value={editingFineAmount}
+                              onChange={(e) => setEditingFineAmount(e.target.value)}
+                              className="w-16 px-1.5 py-0.5 text-xs font-bold border border-blue-400 rounded bg-white text-slate-900 text-center"
+                              autoFocus
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const parsed = parseFloat(editingFineAmount);
+                                if (!isNaN(parsed) && parsed > 0 && onUpdateFine) {
+                                  onUpdateFine(fine.id, { amount: parsed });
+                                }
+                                setEditingFineId(null);
+                              }}
+                              className="p-1 bg-emerald-600 text-white rounded hover:bg-emerald-700 cursor-pointer"
+                              title="Uložit a přepsat částku"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingFineId(null)}
+                              className="p-1 bg-slate-200 text-slate-700 rounded hover:bg-slate-300 cursor-pointer"
+                              title="Zrušit"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <span className="font-black text-red-600">
+                              +{formatCurrency(fine.amount, currency)}
+                            </span>
+                            {onUpdateFine && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingFineId(fine.id);
+                                  setEditingFineAmount(fine.amount.toString());
+                                }}
+                                className="p-1 text-slate-400 hover:text-blue-700 transition-colors cursor-pointer"
+                                title="Upravit / přepsat částku"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            {onDeleteFine && (
+                              <button
+                                type="button"
+                                onClick={() => onDeleteFine(fine.id)}
+                                className="p-1 text-slate-400 hover:text-red-600 transition-colors cursor-pointer"
+                                title="Smazat tuto pokutu"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
 
               <button

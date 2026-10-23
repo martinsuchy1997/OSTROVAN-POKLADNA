@@ -26,7 +26,7 @@ export const MembersSummaryView: React.FC<MembersSummaryViewProps> = ({
   onOpenAddFineModal,
   onOpenAddPlayerModal,
   onDeletePlayer,
-  initialFilter = 'debtors',
+  initialFilter = 'all',
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'debtors' | 'all' | 'clean'>(initialFilter);
