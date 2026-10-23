@@ -1,0 +1,72 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global helper functions
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Validation functions
+    function isValidPlayer(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && data.createdAt is number;
+    }
+
+    function isValidTransaction(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && data.amount is number && data.amount > 0 && data.amount <= 100000
+        && data.category is string && data.category.size() <= 150
+        && data.type is string && data.type == 'income';
+    }
+
+    function isValidSettings(data) {
+      return (data.teamName is string && data.teamName.size() <= 100 && data.currency is string && data.currency.size() <= 20)
+        || (data.list is list && data.list.size() <= 100);
+    }
+
+    function isValidCategory(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 150;
+    }
+
+    // 1. Players collection
+    match /players/{playerId} {
+      allow read: if true;
+      allow create, update: if isValidId(playerId) && isValidPlayer(incoming());
+      allow delete: if isValidId(playerId);
+    }
+
+    // 2. Transactions collection
+    match /transactions/{transactionId} {
+      allow read: if true;
+      allow create, update: if isValidId(transactionId) && isValidTransaction(incoming());
+      allow delete: if isValidId(transactionId);
+    }
+
+    // 3. Settings collection
+    match /settings/{settingId} {
+      allow read: if true;
+      allow create, update: if isValidId(settingId) && isValidSettings(incoming());
+      allow delete: if isValidId(settingId);
+    }
+
+    // 4. Categories collection
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow create, update: if isValidId(categoryId) && isValidCategory(incoming());
+      allow delete: if isValidId(categoryId);
+    }
+
+    // Default catch-all deny rule
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

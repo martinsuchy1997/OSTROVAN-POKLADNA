@@ -21,6 +21,24 @@ import {
   formatCurrency,
   exportTreasuryPDF,
 } from './utils/exportUtils';
+import {
+  initializeCloudDatabaseIfEmpty,
+  subscribeToPlayers,
+  subscribeToTransactions,
+  subscribeToSettings,
+  subscribeToCategories,
+  addPlayerToCloud,
+  addMultiplePlayersToCloud,
+  deletePlayerFromCloud,
+  addTransactionToCloud,
+  deleteTransactionFromCloud,
+  updateTransactionInCloud,
+  clearPlayerDebtInCloud,
+  saveSettingsToCloud,
+  saveCategoriesToCloud,
+  resetCloudToSampleData,
+  clearAllCloudData,
+} from './services/firebaseSync';
 
 export default function App() {
   // Transactions persistence
@@ -90,7 +108,57 @@ export default function App() {
     return INITIAL_PLAYERS;
   });
 
-  // Sync to localStorage
+  // Real-time cloud database synchronization
+  useEffect(() => {
+    // 1. Initialize cloud Firestore database if it is empty
+    initializeCloudDatabaseIfEmpty(players, transactions, settings, categories);
+
+    // 2. Real-time listeners for live multi-device sync
+    const unsubPlayers = subscribeToPlayers((cloudPlayers) => {
+      if (cloudPlayers) {
+        setPlayers(cloudPlayers);
+        try {
+          localStorage.setItem('team_treasury_players', JSON.stringify(cloudPlayers));
+        } catch (e) {}
+      }
+    });
+
+    const unsubTxs = subscribeToTransactions((cloudTxs) => {
+      if (cloudTxs) {
+        setTransactions(cloudTxs);
+        try {
+          localStorage.setItem('team_treasury_transactions', JSON.stringify(cloudTxs));
+        } catch (e) {}
+      }
+    });
+
+    const unsubSettings = subscribeToSettings((cloudSettings) => {
+      if (cloudSettings) {
+        setSettings(cloudSettings);
+        try {
+          localStorage.setItem('team_treasury_settings', JSON.stringify(cloudSettings));
+        } catch (e) {}
+      }
+    });
+
+    const unsubCats = subscribeToCategories((cloudCats) => {
+      if (cloudCats) {
+        setCategories(cloudCats);
+        try {
+          localStorage.setItem('team_treasury_categories', JSON.stringify(cloudCats));
+        } catch (e) {}
+      }
+    });
+
+    return () => {
+      unsubPlayers();
+      unsubTxs();
+      unsubSettings();
+      unsubCats();
+    };
+  }, []);
+
+  // Sync to localStorage as local mirror
   useEffect(() => {
     localStorage.setItem('team_treasury_transactions', JSON.stringify(transactions));
   }, [transactions]);
@@ -167,7 +235,7 @@ export default function App() {
     [transactions]
   );
 
-  // Handlers with instant localStorage persistence
+  // Handlers with instant local update and cloud database sync
   const handleAddTransaction = (txData: Omit<Transaction, 'id' | 'createdAt'>) => {
     const newTx: Transaction = {
       ...txData,
@@ -180,22 +248,17 @@ export default function App() {
       const next = [newTx, ...prev];
       try {
         localStorage.setItem('team_treasury_transactions', JSON.stringify(next));
-      } catch (e) {
-        console.error('LocalStorage error', e);
-      }
+      } catch (e) {}
       return next;
     });
 
+    // Save to Firestore cloud database
+    addTransactionToCloud(newTx);
+
     if (newTx.category && !categories.includes(newTx.category)) {
-      setCategories((prev) => {
-        const next = [...prev, newTx.category];
-        try {
-          localStorage.setItem('team_treasury_categories', JSON.stringify(next));
-        } catch (e) {
-          console.error('LocalStorage error', e);
-        }
-        return next;
-      });
+      const updatedCategories = [...categories, newTx.category];
+      setCategories(updatedCategories);
+      saveCategoriesToCloud(updatedCategories);
     }
   };
 
@@ -204,11 +267,12 @@ export default function App() {
       const next = prev.filter((t) => t.id !== id);
       try {
         localStorage.setItem('team_treasury_transactions', JSON.stringify(next));
-      } catch (e) {
-        console.error('LocalStorage error', e);
-      }
+      } catch (e) {}
       return next;
     });
+
+    // Delete from Firestore cloud database
+    deleteTransactionFromCloud(id);
   };
 
   // Update an existing fine amount or category
@@ -217,11 +281,12 @@ export default function App() {
       const next = prev.map((t) => (t.id === id ? { ...t, ...updated } : t));
       try {
         localStorage.setItem('team_treasury_transactions', JSON.stringify(next));
-      } catch (e) {
-        console.error('LocalStorage error', e);
-      }
+      } catch (e) {}
       return next;
     });
+
+    // Update in Firestore cloud database
+    updateTransactionInCloud(id, updated);
   };
 
   // Clear / zero out all debt for a specific player (when player paid)
@@ -231,11 +296,12 @@ export default function App() {
       const next = prev.filter((t) => t.name.trim().toLowerCase() !== target);
       try {
         localStorage.setItem('team_treasury_transactions', JSON.stringify(next));
-      } catch (e) {
-        console.error('LocalStorage error', e);
-      }
+      } catch (e) {}
       return next;
     });
+
+    // Clear debt in Firestore cloud database
+    clearPlayerDebtInCloud(playerName);
   };
 
   const handleOpenAddFine = (name?: string) => {
@@ -266,11 +332,12 @@ export default function App() {
       const next = [...prev, newPlayer];
       try {
         localStorage.setItem('team_treasury_players', JSON.stringify(next));
-      } catch (e) {
-        console.error('LocalStorage error', e);
-      }
+      } catch (e) {}
       return next;
     });
+
+    // Add to Firestore cloud database
+    addPlayerToCloud(newPlayer);
   };
 
   const handleAddMultiplePlayers = (names: string[]) => {
@@ -283,35 +350,37 @@ export default function App() {
       const next = [...prev, ...newPlayers];
       try {
         localStorage.setItem('team_treasury_players', JSON.stringify(next));
-      } catch (e) {
-        console.error('LocalStorage error', e);
-      }
+      } catch (e) {}
       return next;
     });
+
+    // Add to Firestore cloud database
+    addMultiplePlayersToCloud(newPlayers);
   };
 
   const handleDeletePlayer = (name: string) => {
     const targetName = name.trim().toLowerCase();
-    // 1. Remove player from roster
+    const targetPlayer = players.find((p) => p.name.trim().toLowerCase() === targetName);
+
+    // 1. Remove player from roster locally
     setPlayers((prev) => {
       const next = prev.filter((p) => p.name.trim().toLowerCase() !== targetName);
       try {
         localStorage.setItem('team_treasury_players', JSON.stringify(next));
-      } catch (e) {
-        console.error('LocalStorage error', e);
-      }
+      } catch (e) {}
       return next;
     });
-    // 2. Remove all transactions of this player so they are not recreated in membersSummary
+    // 2. Remove all transactions of this player locally
     setTransactions((prev) => {
       const next = prev.filter((t) => t.name.trim().toLowerCase() !== targetName);
       try {
         localStorage.setItem('team_treasury_transactions', JSON.stringify(next));
-      } catch (e) {
-        console.error('LocalStorage error', e);
-      }
+      } catch (e) {}
       return next;
     });
+
+    // 3. Delete from Firestore cloud database
+    deletePlayerFromCloud(targetPlayer?.id || name, name);
   };
 
   const handleResetToSampleData = () => {
@@ -324,9 +393,10 @@ export default function App() {
       localStorage.setItem('team_treasury_settings', JSON.stringify(DEFAULT_SETTINGS));
       localStorage.setItem('team_treasury_categories', JSON.stringify(INITIAL_CATEGORIES));
       localStorage.setItem('team_treasury_players', JSON.stringify(INITIAL_PLAYERS));
-    } catch (e) {
-      console.error('LocalStorage error', e);
-    }
+    } catch (e) {}
+
+    // Reset in Firestore cloud database
+    resetCloudToSampleData();
   };
 
   const handleClearAllData = () => {
@@ -335,18 +405,20 @@ export default function App() {
     try {
       localStorage.setItem('team_treasury_transactions', JSON.stringify([]));
       localStorage.setItem('team_treasury_players', JSON.stringify([]));
-    } catch (e) {
-      console.error('LocalStorage error', e);
-    }
+    } catch (e) {}
+
+    // Clear in Firestore cloud database
+    clearAllCloudData();
   };
 
   const handleSaveSettings = (newSettings: TreasurySettings) => {
     setSettings(newSettings);
     try {
       localStorage.setItem('team_treasury_settings', JSON.stringify(newSettings));
-    } catch (e) {
-      console.error('LocalStorage error', e);
-    }
+    } catch (e) {}
+
+    // Save to Firestore cloud database
+    saveSettingsToCloud(newSettings);
   };
 
   const handleImportData = (data: {
